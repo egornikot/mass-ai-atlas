@@ -6,6 +6,50 @@
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-4ade80)](CONTRIBUTING.md)
 [![The Open Accelerator](https://img.shields.io/badge/by-The%20Open%20Accelerator-EE0000)](https://the-open-accelerator.com)
 
+> ## 🏙️ This fork: 3D Lenses — a map that says how sure it is
+>
+> **Chart the Common Wealth hackathon, 31 Oct 2026 · Track B, "The Passage"**
+>
+> **▶ Live demo: [egornikot.github.io/mass-ai-atlas](https://egornikot.github.io/mass-ai-atlas/)** —
+> the Map tab is ours. The standalone page is
+> [atlas3d.html](https://egornikot.github.io/mass-ai-atlas/atlas3d.html), and you can try
+> [an approximate, doubtful entry](https://egornikot.github.io/mass-ai-atlas/atlas3d.html?entry=liquid).
+> · Pull request: [holzerjm/mass-ai-atlas#79](https://github.com/holzerjm/mass-ai-atlas/pull/79)
+> · One-page brief: [docs/3d-lenses.md](docs/3d-lenses.md)
+>
+> ### The problem
+> The Atlas already records its own doubt: approximate coordinates, verification months,
+> missing stages, missing links, funders with no check size, deadlines that only say
+> "rolling". None of that reached the map. A neighborhood guess looked exactly like a street
+> address, and connections lived only in the Galaxy, away from the geography.
+>
+> ### What we added (scope)
+> | | |
+> |---|---|
+> | **Credibility lens** | Every pin is green, amber or red, from a 0–100 reading of the brief's six doubt signals: approximate pin, verification month, no stage, no connections, funder with no check size, and a deadline that is rolling, dated or passed. We added two more signals found while building: pins that share exact coordinates, and links listed by one side only. Approximate pins are hollow rings with a halo, and older entries fade. |
+> | **"Before you act"** | Each card opens with what to double-check, for example *"Get the street address from their site before you plan a visit"*. Every signal links to **the exact line** in `data/entities.yml` that supports it. |
+> | **Connections on the real map** | The Galaxy's links drawn as arcs, bundled between areas so a crowd sends one thick arc instead of forty. Selecting an organization shows only its network; ← → walks through it. |
+> | **3D** | Tilt and rotate the map. Columns show credibility or connections, buildings appear from street zoom, and hillshade gives relief across the whole Commonwealth. |
+> | **Readable, not crowded** | Dense areas group into bubbles named after their neighborhood (Kendall Sq, Seaport…) that split as you zoom. Labels never overlap. The legend works as a show-only filter, and each lens has a short reading guide. |
+> | **Day / night** | Follows the Atlas header's theme, with bluish water and green parks in both. |
+> | **Keyboard & phone** | `/` search, ← → through a network, `Esc` to close; folding panel on small screens; reduced-motion support. |
+>
+> ### Value added
+> - **For founders:** you know *before* acting which parts of an entry to double-check. The
+>   confident entries stay confident, and the doubtful ones say what is doubtful and what to do
+>   next.
+> - **For the maintainer:** "Least certain entries" is a ready review queue, and "Suggest a
+>   fix" opens the existing flag form. Nothing is written to the data without a human.
+> - **For the Atlas:** the morning's probe numbers are counted live in the side panel and drawn
+>   on the map. It needs no build step, adds no new data, and the data files are untouched.
+>
+> ### Honesty rules it follows
+> It never edits data. It never presents a computed score as a verification, or an event name
+> match as confirmed. It never invents an organization or a connection.
+>
+> **Sources:** Mass AI Atlas data (The Open Accelerator, CC BY 4.0), the Atlas events feed
+> (optional), OpenFreeMap / OpenStreetMap, and AWS Open Data terrain tiles.
+
 The living map of Massachusetts' AI ecosystem — built by the community for the community and founders, presented by
 [The Open Accelerator](https://the-open-accelerator.com) (an initiative between the
 MA AI Hub, Red Hat & IBM).
@@ -14,13 +58,12 @@ MA AI Hub, Red Hat & IBM).
 
 **Four ways to explore the Massachusetts AI ecosystem:**
 
-- 🗺️ **Map** — every VC, lab, accelerator and community pinned across Massachusetts
+- 🗺️ **Map** — every VC, lab, accelerator and community across Massachusetts, now the
+  3D Lenses map ([`atlas3d.html`](atlas3d.html)): how sure the atlas is about each entry,
+  the Galaxy's connections on the real map, and 3D. See [docs/3d-lenses.md](docs/3d-lenses.md).
 - ✨ **Galaxy** — an animated network of how the ecosystem connects (spinouts, funds, hosts)
 - 🧭 **Founder Journey** — resources curated by stage, from first spark to scale
 - 📇 **Directory** — full-text search with category and stage filters
-- 🏙️ **3D Lenses** ([`atlas3d.html`](atlas3d.html)) — a tiltable map that shows how sure
-  the atlas is about each entry, and draws the Galaxy's connections on the real map. See
-  [docs/3d-lenses.md](docs/3d-lenses.md).
 
 Each entry's drawer says what the organization offers founders, shows when a maintainer
 last verified it, and under **places to meet** lists the cafés, quick bites and quieter

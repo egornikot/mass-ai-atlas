@@ -25,6 +25,7 @@ html.light{
   --shadow:0 8px 24px rgba(15,23,42,.14);
 }
 html.light .maplibregl-ctrl-group button .maplibregl-ctrl-icon{filter:none}
+html.embed .brand,html.embed #themeBtn{display:none}
 html.light .pill{color:#0b1020}
 .panel,.card,.brand,.seg,.search input,.guide,.tip,.theme-btn,.results{transition:background-color .35s,color .35s,border-color .35s}
 .theme-btn{background:var(--panel);border:1px solid var(--line);border-radius:12px;width:40px;height:40px;font-size:18px;cursor:pointer}
@@ -229,6 +230,18 @@ const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">"
 const store = { get(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } },
                 set(k,v){ try{ localStorage.setItem(k,v); }catch(e){} } };
 const GH_REPO = "holzerjm/mass-ai-atlas";
+// Embedded as the Map view of index.html (?embed=1): the Atlas header owns the brand and
+// the theme, and sends selections by message. Messages that arrive before the data and
+// the map are ready wait in `pending`.
+const EMBED = /[?&]embed=1\b/.test(location.search);
+if(EMBED) document.documentElement.classList.add("embed");
+const pending = [];
+let onMsg = m => pending.push(m);
+addEventListener("message", e => {
+  if(e.origin !== location.origin || !e.data || typeof e.data.type !== "string") return;
+  onMsg(e.data);
+});
+const parentTheme = () => { try{ return parent !== window ? (parent.document.documentElement.classList.contains("dark") ? "dark" : "light") : null; }catch(e){ return null; } };
 const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const VIEWS = {
   boston: { center:[-71.09, 42.358], zoom:12.4, pitch:45, bearing:-15 },
@@ -462,7 +475,7 @@ function start({ CATS, STAGES, DATA, LINES }, EVENTS){
       }catch(e){}
     }
   }
-  let theme = store.get("atlas3d-theme") === "light" ? "light" : "dark";
+  let theme = (EMBED && parentTheme()) || (store.get("atlas3d-theme") === "light" ? "light" : "dark");
   document.documentElement.classList.toggle("light", theme === "light");
   const map = new maplibregl.Map({
     container:"map", style:MAP_STYLES[theme], ...VIEWS.boston,
@@ -499,13 +512,15 @@ function start({ CATS, STAGES, DATA, LINES }, EVENTS){
     }, first);
     render();
   });
-  $("themeBtn").onclick = () => {
-    theme = theme === "dark" ? "light" : "dark";
-    store.set("atlas3d-theme", theme);
+  function setTheme(t, persist){
+    if(t !== "light" && t !== "dark" || t === theme) return;
+    theme = t;
+    if(persist) store.set("atlas3d-theme", theme);
     document.documentElement.classList.toggle("light", theme === "light");
     syncThemeBtn();
     map.setStyle(MAP_STYLES[theme]);
-  };
+  }
+  $("themeBtn").onclick = () => setTheme(theme === "dark" ? "light" : "dark", true);
   function syncThemeBtn(){
     $("themeBtn").textContent = theme === "dark" ? "☀️" : "🌙";
     $("themeBtn").setAttribute("aria-label", theme === "dark" ? "Switch to day map" : "Switch to night map");
@@ -906,8 +921,16 @@ function start({ CATS, STAGES, DATA, LINES }, EVENTS){
   };
 
   renderLegend(); renderGuide();
+  // map.loaded() goes false again while tiles stream in, so remember the first load instead
+  let mapReady = false; map.once("load", () => { mapReady = true; });
+  const whenReady = fn => mapReady ? fn() : map.once("load", fn);
   const deep = new URLSearchParams(location.search).get("entry");
-  if(deep && byId[deep]) map.once("load", () => select(byId[deep], true));
+  if(deep && byId[deep]) whenReady(() => select(byId[deep], true));
+  onMsg = m => {
+    if(m.type === "atlas3d:select" && byId[m.id]) whenReady(() => { st.walk = null; select(byId[m.id], true); });
+    else if(m.type === "atlas3d:theme") setTheme(m.theme, false);
+  };
+  pending.splice(0).forEach(onMsg);
   window.__atlas3d = { DATA, pairs, evIdx, map, st, render };   // handy for debugging in the console
 }
 </script>
