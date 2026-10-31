@@ -18,6 +18,9 @@ MA AI Hub, Red Hat & IBM).
 - ✨ **Galaxy** — an animated network of how the ecosystem connects (spinouts, funds, hosts)
 - 🧭 **Founder Journey** — resources curated by stage, from first spark to scale
 - 📇 **Directory** — full-text search with category and stage filters
+- 🏙️ **3D Lenses** ([`atlas3d.html`](atlas3d.html)) — a tiltable map that shows how sure
+  the atlas is about each entry, and draws the Galaxy's connections on the real map. See
+  [docs/3d-lenses.md](docs/3d-lenses.md).
 
 Each entry's drawer says what the organization offers founders, shows when a maintainer
 last verified it, and under **places to meet** lists the cafés, quick bites and quieter

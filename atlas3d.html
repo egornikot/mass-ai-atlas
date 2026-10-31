@@ -61,7 +61,9 @@ kbd{font:600 11px/1 "Red Hat Display",sans-serif;border:1px solid var(--line);bo
 .legend button,.legend .static{display:flex;align-items:center;gap:8px;background:none;border:0;padding:4px 6px;margin:0 -6px;border-radius:7px;font-size:13px;text-align:left;cursor:pointer}
 .legend .static{cursor:default}
 .legend button:hover{background:var(--panel2)}
-.legend button[aria-pressed="false"]{opacity:.35;text-decoration:line-through}
+.legend.picking button[aria-pressed="false"]{opacity:.4}
+.legend button[aria-pressed="true"]{background:var(--panel2);box-shadow:inset 0 0 0 1px var(--gold)}
+.legend button.clear{color:var(--gold);font-weight:700;justify-content:center;margin-top:4px}
 .legend .count{margin-left:auto;color:var(--muted);font-size:12px}
 .dot{flex:none;width:11px;height:11px;border-radius:50%}
 .ring{flex:none;width:11px;height:11px;border-radius:50%;border:2px solid var(--muted)}
@@ -93,6 +95,10 @@ kbd{font:600 11px/1 "Red Hat Display",sans-serif;border:1px solid var(--line);bo
 .sig li{display:grid;grid-template-columns:22px 1fr auto;gap:6px;padding:6px 0;border-bottom:1px solid var(--line)}
 .sig .pts{font-weight:700;white-space:nowrap}
 .sig .src{display:block;font-size:12px}
+.sig .next{display:block;color:var(--gold);margin-top:2px}
+.todo{margin:10px 0;padding:10px 12px;border-radius:10px;border:1px solid rgba(251,191,36,.45);background:rgba(251,191,36,.08);font-size:13px;line-height:1.5}
+.todo ul{margin:4px 0 0;padding-left:18px}
+.todo.ok{border-color:rgba(74,222,128,.45);background:rgba(74,222,128,.08)}
 .conn button{background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:3px 10px;margin:3px 4px 3px 0;cursor:pointer;font-size:12px}
 .conn button:hover{border-color:var(--gold)}
 .conn button.oneway{border-style:dashed;color:var(--muted)}
@@ -154,7 +160,7 @@ kbd{font:600 11px/1 "Red Hat Display",sans-serif;border:1px solid var(--line);bo
   <button class="toggle-panel" id="togglePanel" aria-expanded="true">▾ Legend &amp; controls</button>
   <div class="panel-body">
     <details open>
-      <summary id="legendTitle">Legend · click to filter</summary>
+      <summary id="legendTitle">Legend · click to show only</summary>
       <div class="legend" id="legend"></div>
     </details>
     <details>
@@ -181,6 +187,7 @@ kbd{font:600 11px/1 "Red Hat Display",sans-serif;border:1px solid var(--line);bo
       <p class="note">Scores are computed in your browser from the atlas's own fields. Nothing here edits the data — “Suggest a fix” on a card opens a GitHub issue for a maintainer to review.</p>
     </details>
     <p class="note" style="margin:8px 0 0"><kbd>/</kbd> search · <kbd>←</kbd><kbd>→</kbd> step through connections · <kbd>Esc</kbd> close</p>
+    <p class="note" style="margin:8px 0 0">Data: <a href="https://the-open-accelerator.com/ecosystem/" target="_blank" rel="noopener">Mass AI Atlas, The Open Accelerator</a> (CC BY 4.0). Map data © OpenStreetMap contributors via OpenFreeMap.</p>
   </div>
 </aside>
 
@@ -227,7 +234,7 @@ const GUIDE = {
     <li>Click any organization to see only its network. Grey arcs are listed by one side only.</li>
     <li>Taller, brighter columns = better connected.</li></ul>`,
   category: `<b>Category lens</b> — what kind of organization each one is.
-    <ul><li>Click a category in the legend to hide or show it.</li>
+    <ul><li>Click a category in the legend to show only it; click more to add them. “Show all” clears the filter.</li>
     <li>Bubbles take the color of the most common category inside.</li></ul>`
 };
 
@@ -235,7 +242,20 @@ const GUIDE = {
 async function loadData(){
   const texts = await Promise.all(AtlasData.FILES.map(f =>
     fetch("data/" + f).then(r => { if(!r.ok) throw new Error(`data/${f}: HTTP ${r.status}`); return r.text(); })));
-  return AtlasData.loadAtlas(Object.fromEntries(AtlasData.FILES.map((f,i) => [f, texts[i]])), jsyaml, ajv7);
+  const byName = Object.fromEntries(AtlasData.FILES.map((f,i) => [f, texts[i]]));
+  return { ...AtlasData.loadAtlas(byName, jsyaml, ajv7), LINES:lineIndex(byName["entities.yml"]) };
+}
+// id → {start, fields:{key: line}} in data/entities.yml, so every signal can link to
+// the exact line on GitHub that supports it (code search would ask judges to sign in)
+function lineIndex(text){
+  const out = {}; let cur = null;
+  text.split("\n").forEach((line, i) => {
+    const m = line.match(/^\s*-\s+id:\s*["']?([a-z0-9-]+)/);
+    if(m){ cur = out[m[1]] = { start:i + 1, fields:{ id:i + 1 } }; return; }
+    const f = cur && line.match(/^\s+([A-Za-z]+):/);
+    if(f && !(f[1] in cur.fields)) cur.fields[f[1]] = i + 1;
+  });
+  return out;
 }
 // The weekly events feed is optional: deployed next to this page as events.json.
 async function loadEvents(){
@@ -246,38 +266,49 @@ async function loadEvents(){
 }
 
 /* ---------- credibility ----------
-   Starts at 100 and loses points for each doubt signal the organizers listed
-   (HACKATHON.md), plus stacked coordinates. Every signal carries the evidence
-   and a link so a judge can check it. Recent event mentions add a little back. */
+   Starts at 100 and loses points for each of the six doubt signals in the event
+   brief (approximate pin, verification month, no stage, no connections, funder
+   with no check size, deadline rolling / dated / gone), plus stacked coordinates.
+   Every signal carries its evidence, a link to the exact line of data behind it,
+   and what a founder should do about it. It is a computed reading of the entry's
+   own fields — never a verification, and the card says so. */
 const monthsSince = ym => {
   if(!ym) return null;
   const [y,m] = ym.split("-").map(Number), now = new Date();
   return (now.getFullYear() - y) * 12 + (now.getMonth() + 1 - m);
 };
-const yamlLink = d => `https://github.com/${GH_REPO}/search?q=${encodeURIComponent("id: " + d.id)}&type=code`;
+const DATA_URL = `https://github.com/${GH_REPO}/blob/main/data/entities.yml`;
+const lineLink = (d, field, ctx) => {
+  const e = ctx.lines[d.id]; if(!e) return DATA_URL;
+  return `${DATA_URL}#L${e.fields[field] || e.start}`;
+};
+const today = () => new Date().toISOString().slice(0, 10);
 
 function scoreEntry(d, ctx){
-  const s = [], add = (ok, pts, label, detail, href) => s.push({ok, pts, label, detail, href});
+  const s = [], src = f => lineLink(d, f, ctx);
+  const add = (ok, pts, label, detail, href, next) => s.push({ok, pts, label, detail, href, next});
   const age = monthsSince(d.lastVerified);
-  if(age === null) add(false, -25, "Never verified", "No lastVerified month on this entry.", yamlLink(d));
-  else if(age <= 1) add(true, 0, "Verified recently", `Last checked ${d.lastVerified}.`, yamlLink(d));
-  else if(age <= 3) add(false, -5, "Verified a few months ago", `Last checked ${d.lastVerified} (${age} months).`, yamlLink(d));
-  else add(false, -15, "Stale verification", `Last checked ${d.lastVerified} (${age} months ago).`, yamlLink(d));
+  if(age === null) add(false, -25, "Never verified", "No lastVerified month on this entry.", src("id"), "Check the official site before relying on anything here.");
+  else if(age <= 1) add(true, 0, "Verified recently", `A maintainer last checked it in ${d.lastVerified}.`, src("lastVerified"));
+  else if(age <= 3) add(false, -5, "Verified a few months ago", `Last checked ${d.lastVerified} (${age} months).`, src("lastVerified"), "Skim the official site for recent changes.");
+  else add(false, -15, "Stale verification", `Last checked ${d.lastVerified} (${age} months ago).`, src("lastVerified"), "Confirm on the official site that it is still active before you reach out.");
 
-  if(d.approx) add(false, -20, "Approximate location", `Pin is neighborhood-level: “${d.loc}”.`, yamlLink(d));
-  else add(true, 0, "Exact location", d.loc, yamlLink(d));
+  if(d.approx) add(false, -20, "Approximate location", `The pin is neighborhood-level: “${d.loc}”.`, src("approx"), "Get the street address from their site before you plan a visit.");
+  else add(true, 0, "Exact location", d.loc, src("loc"));
 
   const twins = ctx.stacked[d.lat + "," + d.lng].filter(x => x !== d);
-  if(twins.length) add(false, -5, "Shares a pin", `Same coordinates as ${twins.map(t => t.name).join(", ")} — one pin hid the other on the original map.`, yamlLink(d));
+  if(twins.length) add(false, -5, "Shares a pin", `Same coordinates as ${twins.map(t => t.name).join(", ")}; on the main map one pin hides the other.`, src("lat"), "Don't assume they are in the same building.");
 
-  if(!(d.stages || []).length) add(false, -10, "No founder stage", "Missing from the Founder Journey view.", yamlLink(d));
-  if(!ctx.neighbors[d.id].size) add(false, -10, "No connections", "Nothing links to or from this entry.", yamlLink(d));
+  if(!(d.stages || []).length) add(false, -10, "No founder stage", "No stage recorded, so it never appears in the Founder Journey.", src("id"), "Ask which stage they serve before you apply.");
+  if(!ctx.neighbors[d.id].size) add(false, -10, "No connections", "No other entry links to it, and it lists none.", src("links"), "No warm intro is mapped. Look for one through their site or events.");
   if((d.offers || []).includes("funding") && !(d.facts || []).some(f => f[0] === "Check size"))
-    add(false, -10, "Funder without check size", "Offers funding but gives no Check size fact.", yamlLink(d));
-  if(d.applyBy === "rolling") add(false, -5, "Deadline only “rolling”", "No concrete application date.", yamlLink(d));
+    add(false, -10, "Funder without check size", "It offers funding but gives no check size.", src("facts"), "Ask about their typical check before you pitch.");
+  if(d.applyBy === "rolling") add(false, -5, "Deadline only “rolling”", "No concrete application date.", src("applyBy"), "Apply when ready, but confirm the program is taking applications.");
+  else if(d.applyBy && d.applyBy < today()) add(false, -10, "Deadline passed", `The listed deadline (${d.applyBy}) has gone.`, src("applyBy"), "This round is closed. Check their site for the next one.");
+  else if(d.applyBy) add(true, 0, "Upcoming deadline", `Apply by ${d.applyBy}${d.applyNote ? ` (${d.applyNote})` : ""}.`, src("applyBy"), `Put ${d.applyBy} in your calendar.`);
 
   const ev = ctx.events[d.id] || [];
-  if(ev.length) add(true, Math.min(10, 5 * ev.length), "Active this month", `${ev.length} upcoming event${ev.length > 1 ? "s" : ""} in the weekly feed mention it.`, ev[0].url);
+  if(ev.length) add(true, Math.min(10, 5 * ev.length), "Active this month (inferred)", `Its name appears in ${ev.length} upcoming event${ev.length > 1 ? "s" : ""} in the weekly feed. This is a name match, not a confirmation.`, ev[0].url);
 
   const score = Math.max(0, Math.min(100, 100 + s.reduce((a,x) => a + x.pts, 0)));
   return { score, signals:s, tier: score >= 80 ? "hi" : score >= 60 ? "mid" : "lo", age };
@@ -330,7 +361,7 @@ Promise.all([loadData(), loadEvents()]).then(([atlas, events]) => start(atlas, e
   document.body.insertAdjacentHTML("afterbegin", `<p role="alert" style="position:fixed;top:0;left:0;right:0;z-index:99;margin:0;padding:12px;background:#7f1d1d">Sorry — the atlas data failed to load.</p>`);
 });
 
-function start({ CATS, STAGES, DATA }, EVENTS){
+function start({ CATS, STAGES, DATA, LINES }, EVENTS){
   const byId = Object.fromEntries(DATA.map(d => [d.id, d]));
 
   // links: undirected neighbors + which directions were declared
@@ -357,16 +388,17 @@ function start({ CATS, STAGES, DATA }, EVENTS){
     if(hits.length) evIdx[d.id] = hits;
   }
 
-  const ctx = { stacked, neighbors, events: evIdx };
+  const ctx = { stacked, neighbors, events: evIdx, lines: LINES };
   for(const d of DATA){ d.cred = scoreEntry(d, ctx); d.deg = neighbors[d.id].size; }
   const maxDeg = Math.max(...DATA.map(d => d.deg));
 
   /* ---------- state ---------- */
   const st = {
     lens:"trust", metric:"trust", tilt:true, cols:true, labels:true, group:true, allArcs:false, bldg:true,
-    sel:null, hover:null, tiers:new Set(["hi","mid","lo"]), cats:new Set(Object.keys(CATS))
+    // filters pick what to show: an empty set means nothing picked, so show everything
+    sel:null, hover:null, tiers:new Set(), cats:new Set()
   };
-  const shown = d => st.tiers.has(d.cred.tier) && st.cats.has(d.cat);
+  const shown = d => (!st.tiers.size || st.tiers.has(d.cred.tier)) && (!st.cats.size || st.cats.has(d.cat));
 
   /* ---------- clustering ---------- */
   const index = new Supercluster({ radius:56, maxZoom:15, minPoints:3 });
@@ -409,6 +441,13 @@ function start({ CATS, STAGES, DATA }, EVENTS){
     // 3D buildings — vector tiles only exist for what's on screen, and only from z14,
     // so this costs nothing at the Commonwealth view.
     const first = map.getStyle().layers.find(l => l.type === "symbol")?.id;
+    // hillshade only (no terrain mesh, which would pull the deck.gl layers off the ground):
+    // enough relief for the Berkshires and the Pioneer Valley to read at state zoom
+    map.addSource("dem", { type:"raster-dem", encoding:"terrarium", tileSize:256, maxzoom:12,
+      tiles:["https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png"],
+      attribution:'Terrain: <a href="https://registry.opendata.aws/terrain-tiles/">AWS Open Data / Mapzen</a>' });
+    map.addLayer({ id:"hillshade", type:"hillshade", source:"dem", maxzoom:13,
+      paint:{ "hillshade-shadow-color":"#05080f", "hillshade-highlight-color":"#3a4a6b", "hillshade-exaggeration":0.45 } }, first);
     map.addLayer({
       id:"bldg-3d", type:"fill-extrusion", source:"openmaptiles", "source-layer":"building", minzoom:14,
       paint:{
@@ -524,9 +563,11 @@ function start({ CATS, STAGES, DATA }, EVENTS){
       updateTriggers:{ getElevation:sig, getFillColor:sig }
     }));
 
-    // cluster bubbles: dark disc with a colored rim, count drawn on top
+    // cluster bubbles: dark disc with a colored rim, count drawn on top. Bubbles, pins
+    // and text skip the depth test so a column can never cut through its own number.
+    const onTop = { parameters:{ depthCompare:"always", depthWriteEnabled:false } };
     layers.push(new deck.ScatterplotLayer({
-      id:"bubbles", data:clusters, getPosition:n => [...n.pos, elev(n)],
+      id:"bubbles", data:clusters, getPosition:n => [...n.pos, elev(n)], ...onTop,
       radiusUnits:"pixels", getRadius:n => 13 + Math.sqrt(n.members.length) * 2.6,
       stroked:true, lineWidthUnits:"pixels", getLineWidth:2.5,
       getFillColor:n => [12,18,34, focus ? 150 : 235], getLineColor:n => [...colorOf(n), alphaOf(n, focus)],
@@ -534,13 +575,13 @@ function start({ CATS, STAGES, DATA }, EVENTS){
       updateTriggers:{ getPosition:sig, getFillColor:sig, getLineColor:sig }
     }));
     layers.push(new deck.TextLayer({
-      id:"counts", data:clusters, getPosition:n => [...n.pos, elev(n)], getText:n => String(n.members.length),
+      id:"counts", data:clusters, getPosition:n => [...n.pos, elev(n)], getText:n => String(n.members.length), ...onTop,
       getSize:13, fontFamily:"Red Hat Display, sans-serif", fontWeight:800, getColor:[230,236,255,focus ? 120 : 255],
       getTextAnchor:"middle", getAlignmentBaseline:"center", updateTriggers:{ getPosition:sig, getColor:sig }
     }));
 
     layers.push(new deck.ScatterplotLayer({
-      id:"pins", data:orgs, getPosition:n => [...n.pos, elev(n)],
+      id:"pins", data:orgs, getPosition:n => [...n.pos, elev(n)], ...onTop,
       radiusUnits:"pixels", getRadius:n => n.d === st.sel ? 9 : 6,
       // approximate pins are hollow rings; exact pins are solid dots
       filled:true, stroked:true, lineWidthUnits:"pixels", billboard:true,
@@ -560,7 +601,7 @@ function start({ CATS, STAGES, DATA }, EVENTS){
                .map(n => ({ n, text:n.d.name, pri:(n.d === st.sel ? 1000 : focus && focus.has(n.id) ? 700 : 0) + n.d.deg * 3 + n.d.cred.score / 20, off:-13 }))
       ];
       layers.push(new deck.TextLayer({
-        id:"labels", data:placeLabels(lab, elev), getPosition:l => [...l.n.pos, elev(l.n)], getText:l => l.text,
+        id:"labels", data:placeLabels(lab, elev), getPosition:l => [...l.n.pos, elev(l.n)], getText:l => l.text, ...onTop,
         getSize:l => l.n.kind === "cluster" ? 13 : 12, getPixelOffset:l => [0, l.off],
         fontFamily:"Red Hat Display, sans-serif", fontWeight:700, characterSet:"auto",
         getTextAnchor:"middle", getAlignmentBaseline:"bottom",
@@ -599,6 +640,8 @@ function start({ CATS, STAGES, DATA }, EVENTS){
   function flyTo(opts){ REDUCED ? map.jumpTo(opts) : map.flyTo({ ...opts, speed:1.4 }); }
   function select(d, fly){
     st.sel = d; st.hover = null; render();
+    // every selection is a link: ?entry=<id> (same parameter index.html uses)
+    try{ const u = new URL(location.href); d ? u.searchParams.set("entry", d.id) : u.searchParams.delete("entry"); history.replaceState(null, "", u); }catch(e){}
     if(!d){ $("card").classList.remove("open"); return; }
     if(fly) flyTo({ center:d.pos, zoom:Math.max(map.getZoom(), 13.5) });
     showCard(d);
@@ -627,6 +670,7 @@ function start({ CATS, STAGES, DATA }, EVENTS){
     const sig = c.signals.map(s => `<li>
         <span aria-hidden="true">${s.ok ? "✅" : "⚠️"}</span>
         <span><b>${esc(s.label)}</b> — ${esc(s.detail)}
+          ${s.next && !s.ok ? `<span class="next">→ ${esc(s.next)}</span>` : ""}
           <a class="src" href="${esc(s.href)}" target="_blank" rel="noopener">source ↗</a></span>
         <span class="pts" style="color:${s.pts < 0 ? "var(--lo)" : s.pts > 0 ? "var(--hi)" : "var(--muted)"}">${s.pts > 0 ? "+" : ""}${s.pts || "—"}</span>
       </li>`).join("");
@@ -635,6 +679,8 @@ function start({ CATS, STAGES, DATA }, EVENTS){
       return `<button type="button" data-go="${esc(o.id)}" class="${mutual ? "" : "oneway"}" title="${mutual ? "Both entries list each other" : "Only one entry lists the other"}">${esc(o.name)}</button>`;
     }).join("");
     const ev = (evIdx[d.id] || []).map(e => `<div class="ev">📅 <a href="${esc(e.url)}" target="_blank" rel="noopener">${esc(e.title)}</a> · ${new Date(e.start).toLocaleDateString(undefined,{month:"short",day:"numeric"})}</div>`).join("");
+    // the doubts' next steps, biggest doubt first, shown before anything a founder might act on
+    const todo = c.signals.filter(s => !s.ok && s.next).sort((a,b) => a.pts - b.pts).map(s => s.next);
     const flag = `https://github.com/${GH_REPO}/issues/new?` + new URLSearchParams({
       template:"flag-entry.yml", title:`[Flag] ${d.name}`, labels:"flag", "entry-id":`${d.name} (id: ${d.id})`
     });
@@ -647,8 +693,10 @@ function start({ CATS, STAGES, DATA }, EVENTS){
         <div class="num" style="color:${color}">${c.score}</div>
         <div style="flex:1"><b>${c.tier === "hi" ? "High" : c.tier === "mid" ? "Medium" : "Low"} credibility</b>
           <div class="bar-track"><div class="bar-fill" style="width:${c.score}%;background:${color}"></div></div>
-          <div class="note">Last verified ${esc(d.lastVerified || "never")}</div></div>
+          <div class="note">Last verified ${esc(d.lastVerified || "never")} · computed from this entry's fields, not a new verification</div></div>
       </div>
+      ${todo.length ? `<div class="todo"><b>Before you act</b><ul>${todo.map(t => `<li>${esc(t)}</li>`).join("")}</ul></div>`
+                    : `<div class="todo ok"><b>Nothing flagged.</b> The atlas has no doubts recorded about this entry.</div>`}
       <p style="font-size:14px;line-height:1.5;margin:8px 0">${esc(d.desc)}</p>
       <h4>Why this score</h4>
       <ul class="sig">${sig}</ul>
@@ -657,7 +705,7 @@ function start({ CATS, STAGES, DATA }, EVENTS){
       ${ev ? `<h4>Upcoming events</h4>${ev}` : ""}
       <div class="actions">
         <a href="${esc(d.url)}" target="_blank" rel="noopener">Official site ↗</a>
-        <a href="${esc(yamlLink(d))}" target="_blank" rel="noopener">Entry in data ↗</a>
+        <a href="${esc(lineLink(d, "id", ctx))}" target="_blank" rel="noopener">Entry in data ↗</a>
         <a href="${esc(flag)}" target="_blank" rel="noopener">Suggest a fix ↗</a>
       </div>`;
     $("card").classList.add("open");
@@ -671,9 +719,9 @@ function start({ CATS, STAGES, DATA }, EVENTS){
     const L = $("legend"); let h = "";
     const cnt = f => DATA.filter(f).length;
     if(st.lens === "trust"){
-      $("legendTitle").textContent = "Credibility · click to filter";
+      $("legendTitle").textContent = "Credibility · click to show only";
       h = ["hi","mid","lo"].map(t => `<button type="button" data-tier="${t}" aria-pressed="${st.tiers.has(t)}"><span class="dot" style="background:${TIER[t]}"></span>${TIER_LABEL[t]}<span class="count">${cnt(d => d.cred.tier === t)}</span></button>`).join("")
-        + `<div class="hint">Faded = not verified for months</div>`;
+        + clearBtn(st.tiers, "tiers") + `<div class="hint">Faded = not verified for months</div>`;
     } else if(st.lens === "links"){
       $("legendTitle").textContent = "Connections";
       h = `<div class="static"><span class="dot" style="background:rgb(34,211,238)"></span>Most connected</div>
@@ -681,9 +729,11 @@ function start({ CATS, STAGES, DATA }, EVENTS){
            <div class="static"><span style="flex:none;width:16px;height:3px;background:#22d3ee;border-radius:2px"></span>Both sides list the link</div>
            <div class="static"><span style="flex:none;width:16px;height:3px;background:#94a3b8;border-radius:2px"></span>Only one side lists it</div>`;
     } else {
-      $("legendTitle").textContent = "Categories · click to filter";
-      h = Object.entries(CATS).map(([k,c]) => `<button type="button" data-cat="${k}" aria-pressed="${st.cats.has(k)}"><span class="dot" style="background:${c.color}"></span>${esc(c.label)}<span class="count">${cnt(d => d.cat === k)}</span></button>`).join("");
+      $("legendTitle").textContent = "Categories · click to show only";
+      h = Object.entries(CATS).map(([k,c]) => `<button type="button" data-cat="${k}" aria-pressed="${st.cats.has(k)}"><span class="dot" style="background:${c.color}"></span>${esc(c.label)}<span class="count">${cnt(d => d.cat === k)}</span></button>`).join("")
+        + clearBtn(st.cats, "cats");
     }
+    L.classList.toggle("picking", (st.lens === "trust" && st.tiers.size > 0) || (st.lens === "category" && st.cats.size > 0));
     h += `<div class="hint" style="margin-top:8px">Symbols</div>
       <div class="static"><span class="bubble">12</span>Group of nearby organizations</div>
       <div class="static"><span class="dot" style="background:var(--text)"></span>Exact location</div>
@@ -691,10 +741,12 @@ function start({ CATS, STAGES, DATA }, EVENTS){
     L.innerHTML = h;
     L.querySelectorAll("[data-tier]").forEach(b => b.onclick = () => toggle(st.tiers, b.dataset.tier));
     L.querySelectorAll("[data-cat]").forEach(b => b.onclick = () => toggle(st.cats, b.dataset.cat));
+    L.querySelectorAll("[data-clear]").forEach(b => b.onclick = () => { st[b.dataset.clear].clear(); filtersChanged(); });
   }
-  function toggle(set, key){
-    set.has(key) ? set.delete(key) : set.add(key);
-    if(!set.size) set.add(key);           // never filter everything away
+  const clearBtn = (set, key) => set.size ? `<button type="button" class="clear" data-clear="${key}">✕ Show all</button>` : "";
+  // first click shows only that one; more clicks add to it; unpicking the last shows all
+  function toggle(set, key){ set.has(key) ? set.delete(key) : set.add(key); filtersChanged(); }
+  function filtersChanged(){
     if(st.sel && !shown(st.sel)) select(null);
     rebuildIndex(); renderLegend(); render();
   }
@@ -713,14 +765,24 @@ function start({ CATS, STAGES, DATA }, EVENTS){
     const t = { hi:cnt(d => d.cred.tier === "hi"), mid:cnt(d => d.cred.tier === "mid"), lo:cnt(d => d.cred.tier === "lo") };
     const stackedPins = Object.values(stacked).filter(g => g.length > 1).reduce((a,g) => a + g.length, 0);
     $("meter").innerHTML = ["hi","mid","lo"].map(k => `<span style="width:${t[k] / n * 100}%;background:${TIER[k]}"></span>`).join("");
+    // the event's morning probes, each one counted live from the data and drawn on the map
+    const row = ([k,v]) => `<span>${k}</span><b>${v}</b>`;
     $("stats").innerHTML = [
       ["Organizations", n], ["Average credibility", avg],
       ["High / Medium / Low", `${t.hi} / ${t.mid} / ${t.lo}`],
-      ["Approximate pins", cnt(d => d.approx)], ["Pins sharing coordinates", stackedPins],
-      ["Not verified in 3+ months", cnt(d => (d.cred.age ?? 99) > 3)],
-      ["No connections", cnt(d => !d.deg)], ["Links listed one way", pairs.filter(p => !p.mutual).length],
-      ["Mentioned in this week's events", Object.keys(evIdx).length],
-    ].map(([k,v]) => `<span>${k}</span><b>${v}</b>`).join("");
+    ].map(row).join("") + `<span class="note" style="grid-column:1/-1;margin-top:8px">The six doubt signals · shown on every card</span>` + [
+      ["Approximate pins (ring)", cnt(d => d.approx)],
+      ["Last verified June or earlier (faded)", cnt(d => !d.lastVerified || d.lastVerified <= "2026-06")],
+      ["No stage, so not in Founder Journey", cnt(d => !(d.stages || []).length)],
+      ["No links of their own", cnt(d => !(d.links || []).length)],
+      ["Connected to nothing either way", cnt(d => !d.deg)],
+      ["Funders with no check size", cnt(d => (d.offers || []).includes("funding") && !(d.facts || []).some(f => f[0] === "Check size"))],
+      ["Deadline rolling / dated", `${cnt(d => d.applyBy === "rolling")} / ${cnt(d => d.applyBy && d.applyBy !== "rolling")}`],
+    ].map(row).join("") + `<span class="note" style="grid-column:1/-1;margin-top:8px">Found while building this</span>` + [
+      ["Pins sharing coordinates", stackedPins],
+      ["Links listed by one side only", pairs.filter(p => !p.mutual).length],
+      ["Named in this week's events", Object.keys(evIdx).length],
+    ].map(row).join("");
     $("weak").innerHTML = [...DATA].sort((a,b) => a.cred.score - b.cred.score).slice(0, 8).map(d =>
       `<button type="button" data-go="${esc(d.id)}"><span>${esc(d.name)}</span><span class="pill" style="background:${TIER[d.cred.tier]}">${d.cred.score}</span></button>`).join("");
     wireGo($("weak"));
@@ -791,6 +853,8 @@ function start({ CATS, STAGES, DATA }, EVENTS){
   };
 
   renderLegend(); renderGuide();
+  const deep = new URLSearchParams(location.search).get("entry");
+  if(deep && byId[deep]) map.once("load", () => select(byId[deep], true));
   window.__atlas3d = { DATA, pairs, evIdx, map, st, render };   // handy for debugging in the console
 }
 </script>
