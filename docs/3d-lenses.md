@@ -1,6 +1,6 @@
 # 3D Lenses — concept brief
 
-*Chart the Common Wealth, 31 Oct 2026 · Priority track: B, "The Passage" · Author: egornikot*
+*Chart the Common Wealth, 31 Oct 2026 · Team **CommonSpace** · Priority track: B, "The Passage"*
 
 **Live demo:** https://egornikot.github.io/mass-ai-atlas/atlas3d.html ·
 **Code:** [`atlas3d.html`](../atlas3d.html) (one file, no build step) ·
