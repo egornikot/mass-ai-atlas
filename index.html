@@ -148,8 +148,6 @@ html:not(.dark) .map-results{background:rgba(255,255,255,.97)}
 #view-map.active{display:block}
 .map-wrap{position:relative;height:calc(100vh - 64px);min-height:540px}
 #map{position:absolute;inset:0;background:#0a0f1e}
-#atlas3dFrame{position:absolute;inset:0;width:100%;height:100%;border:0;z-index:1000;background:#070b16}
-#view-map .map-search,#view-map .map-legend,#view-map .map-view-switch{display:none}
 .leaflet-container{font:inherit}
 .map-legend{position:absolute;z-index:1000;left:14px;bottom:14px;background:rgba(10,15,30,.92);
   border:1px solid var(--line);border-radius:14px;padding:12px 14px;max-width:230px;backdrop-filter:blur(8px)}
@@ -521,6 +519,7 @@ browse the <a href="e/">full organization index</a> or use the open dataset
     <button class="tab" data-view="galaxy"><span class="ico">✨</span>Galaxy</button>
     <button class="tab" data-view="journey"><span class="ico">🧭</span>Founder Journey</button>
     <button class="tab" data-view="directory"><span class="ico">📇</span>Directory</button>
+    <a class="tab" href="atlas3d.html" style="text-decoration:none" title="Tilt the map, see how sure we are about each pin, and trace connections"><span class="ico">🏙️</span>3D Lenses</a>
     <div class="nav-spacer"></div>
     <button class="tab" id="starNav" style="display:none" title="Your saved shortlist" onclick="openShortlist()">★ <span id="starCount">0</span></button>
     <button class="tab suggest" id="suggestBtn" title="Propose a new organization for the atlas">➕ Suggest an entry</button>
@@ -532,9 +531,6 @@ browse the <a href="e/">full organization index</a> or use the open dataset
 <section id="view-map" class="view view-full active">
   <div class="map-wrap">
     <div id="map"></div>
-    <!-- The Map view is the 3D Lenses map (atlas3d.html): credibility, connections and 3D.
-         The original Leaflet map still initializes underneath so nothing that refers to it breaks. -->
-    <iframe id="atlas3dFrame" src="atlas3d.html?embed=1" title="Map of Massachusetts AI organizations: credibility, connections and 3D" allow="fullscreen"></iframe>
     <div class="map-search">
       <input id="mapSearch" type="text" placeholder="Search the ecosystem…" autocomplete="off">
       <div class="map-results" id="mapResults"></div>
@@ -1048,14 +1044,9 @@ document.addEventListener("keydown", e=>{
   else closeDrawer();
 });
 
-// the 3D Lenses map in the Map view takes selections and the theme by message
-const frame3d = () => document.getElementById("atlas3dFrame");
-function tell3d(msg){ const f = frame3d(); if(f && f.contentWindow) f.contentWindow.postMessage(msg, location.origin); }
-window.tell3d = tell3d;
 function goToMap(id){
   closeDrawer();
   switchView("map");
-  if(frame3d()){ tell3d({ type:"atlas3d:select", id }); return; }
   const d = byId[id];
   setTimeout(()=>{
     mapGoTo([d.lat,d.lng], 15);
@@ -1815,9 +1806,9 @@ const TOUR = [
   { view:"map", sel:".nav-inner",
     title:"Welcome to the Mass AI Atlas 👋",
     text:`${DATA.length} verified organizations — VCs, labs, accelerators, spaces and communities — in four views: the Map, the Galaxy of connections, a stage-by-stage Founder Journey, and a searchable Directory.` },
-  { view:"map", sel:"#atlas3dFrame",
+  { view:"map", sel:"#mapSearch",
     title:"The Map",
-    text:"Every pin shows how sure the atlas is about it: green, amber or red, a hollow ring when the location is approximate, faded when it hasn't been checked for months. Click a pin for the reasons and what to do next, switch to Connections to see who works with whom, and tilt the map for 3D." },
+    text:"Search anything, toggle categories in the legend, and click any colored pin for details. Top right switches between the Boston area and the whole Commonwealth; ⌖ re-frames the view you picked and ∴ groups or un-groups nearby pins." },
   { view:"directory", sel:"#catChips",
     title:"The Directory",
     text:"Full-text search plus category and founder-stage filters — the fastest way to answer “who can help me right now?”" },
@@ -1923,7 +1914,6 @@ document.addEventListener("keydown", e=>{ if(e.key === "Escape" && tourStep >= 0
     try{localStorage.setItem('toa-atlas-theme',theme);}catch(e){}
     updateLogos(theme);
     if(typeof setMapTiles==='function')setMapTiles();
-    if(typeof tell3d==='function')tell3d({type:'atlas3d:theme',theme:theme});
   }
   // Sync the header logo to the theme the head script already applied.
   updateLogos(document.documentElement.classList.contains('dark')?'dark':'light');
