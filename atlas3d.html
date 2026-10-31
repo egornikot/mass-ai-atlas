@@ -447,9 +447,21 @@ function start({ CATS, STAGES, DATA, LINES }, EVENTS){
   // night = the Atlas's own dark style, day = stock positron (the same pair index.html uses)
   const MAP_STYLES = { dark:"./map-style-dark.json", light:"https://tiles.openfreemap.org/styles/positron" };
   const THEME = {
-    dark:  { bldg:"#1f2a44", shadow:"#05080f", highlight:"#3a4a6b" },
-    light: { bldg:"#d5dbe5", shadow:"#8c97ab", highlight:"#ffffff" }
+    dark:  { bldg:"#1f2a44", shadow:"#05080f", highlight:"#3a4a6b", water:"#1f4f80", park:"#22543a", wood:"#1d4632" },
+    light: { bldg:"#d5dbe5", shadow:"#8c97ab", highlight:"#ffffff", water:"#9cc6ea", park:"#b3dc9e", wood:"#c2e2b0" }
   };
+  // a little colour on the basemap: bluish water, green parks and woods, per theme
+  function tintBasemap(T){
+    for(const l of map.getStyle().layers){
+      const sl = l["source-layer"], id = l.id.toLowerCase();
+      try{
+        if(sl === "water" && l.type === "fill") map.setPaintProperty(l.id, "fill-color", T.water);
+        else if(sl === "waterway" && l.type === "line") map.setPaintProperty(l.id, "line-color", T.water);
+        else if(sl === "park" && l.type === "fill"){ map.setPaintProperty(l.id, "fill-color", T.park); map.setPaintProperty(l.id, "fill-opacity", 0.9); }
+        else if(sl === "landcover" && l.type === "fill" && /wood|forest|grass|park/.test(id)) map.setPaintProperty(l.id, "fill-color", /grass|park/.test(id) ? T.park : T.wood);
+      }catch(e){}
+    }
+  }
   let theme = store.get("atlas3d-theme") === "light" ? "light" : "dark";
   document.documentElement.classList.toggle("light", theme === "light");
   const map = new maplibregl.Map({
@@ -462,6 +474,7 @@ function start({ CATS, STAGES, DATA, LINES }, EVENTS){
   // drops our own layers, so they are added back here)
   map.on("style.load", () => {
     const T = THEME[theme];
+    tintBasemap(T);
     // 3D buildings — vector tiles only exist for what's on screen, and only from z14,
     // so this costs nothing at the Commonwealth view.
     const first = map.getStyle().layers.find(l => l.type === "symbol")?.id;
@@ -470,8 +483,11 @@ function start({ CATS, STAGES, DATA, LINES }, EVENTS){
     map.addSource("dem", { type:"raster-dem", encoding:"terrarium", tileSize:256, maxzoom:12,
       tiles:["https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png"],
       attribution:'Terrain: <a href="https://registry.opendata.aws/terrain-tiles/">AWS Open Data / Mapzen</a>' });
+    // drawn under the water and parks: the terrain tiles include bathymetry, which would
+    // otherwise shade the harbor and the Charles nearly black
+    const underWater = map.getStyle().layers.find(l => l["source-layer"] === "water")?.id || first;
     map.addLayer({ id:"hillshade", type:"hillshade", source:"dem", maxzoom:13,
-      paint:{ "hillshade-shadow-color":T.shadow, "hillshade-highlight-color":T.highlight, "hillshade-exaggeration":0.45 } }, first);
+      paint:{ "hillshade-shadow-color":T.shadow, "hillshade-highlight-color":T.highlight, "hillshade-exaggeration":0.45 } }, underWater);
     map.addLayer({
       id:"bldg-3d", type:"fill-extrusion", source:"openmaptiles", "source-layer":"building", minzoom:14,
       paint:{
