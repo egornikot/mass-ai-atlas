@@ -5,8 +5,7 @@ Two safety nets, both added in v2.0 Part A (2026-09-30):
 1. **A Playwright + axe smoke suite** (`tests/`) that loads the real page in
    Chromium and checks the things founders rely on: shared links land where they
    point, every view shows, the counts are real, nothing throws, and there are
-   no critical accessibility failures. It runs in CI on every PR that touches
-   the page, the data, the scripts or the tests.
+   no critical accessibility failures. It runs in CI on every pull request.
 2. **A post-deploy check** (`tests/deploy/verify-live.js`) that runs at the end
    of every deploy and confirms the live site is serving exactly the files that
    were deployed.
@@ -117,17 +116,19 @@ often `axe: galaxy view` — is GPU contention, as in the note on workers.
 | | `#map`, `#galaxy`, `#journey`, `#directory` | each view link showing that view, with real content (pins, canvas, 5 stages, one card per entry) |
 | | tab clicks write the hash; unknown hash → map | the URL staying shareable as people move around |
 | | footer `#footCount` | the footer count being hand-typed again (it said "101 organizations" while the atlas listed 171) |
+| | footer `#footCurated` | the curation month being hand-typed again (it still said "Curated June 2026" in October). The test takes the newest `lastVerified` in the data, the way the page does, so it never needs updating by hand |
 | | every entry opens a drawer | one malformed entry (unknown category, stage with no row) throwing only when someone opens it |
 | `shortlist.spec.js` | `?list=` restores the shared list, and it survives | the d37a30c bug: opening an entry from a shared shortlist, closing it, or switching views rewrote the URL without `?list=`, so a reload or a forwarded link showed nothing. Also: viewing someone's list never writes it into your own saved stars |
 | | `?list=` of unknown ids | a stale list link breaking the page |
-| | co-located pins | every pin sharing exact coordinates with another lists the others in its popup's `.pop-colocated`, and each name there opens that entry's drawer. Every pair within the contract's 25 m is checked too (9 as of 2026-09-30), with the same distance formula as the map's `COLOCATED_M` grouping; the nearest pair outside it is 27.7 m apart |
-| | affiliation labels | an entry with `affiliation` shows "Atlas publisher" / "Atlas sponsor" / "Sponsor-affiliated" in its drawer, and an entry without one shows none of them. Also fails if no entry has the field at all (it was lost, not empty) |
 | `events.spec.js` | `/events/` loads and lists events | the events page breaking |
 | | "→ on the atlas" link | the events page → atlas drawer hand-off |
 | | without `events.json` | a missing feed leaving the page stuck on "Loading events…" |
-| | events footer `#footCount` | same as the atlas footer |
+| | events footer, no count | an organisation count coming back into the events footer. That page never loads the atlas data, so a count there could only go stale (it said "101 organizations" for months); `scripts/build-events-page.js` drops the clause, and the test fails if `#footCount` or an "N organizations" phrase reappears |
+| | events footer, no curation date | the same for the curation month, which said "Curated June 2026" into October |
 | | events footer, light theme | the footer band turning light with the page, which puts the white partner marks on a near-white ground (it did until 2026-11). The footer's ground, text and link colours must match the dark theme's |
+| | contribution links follow `GH_REPO` | a copy of this repository filing its issues on the one it was copied from. `scripts/build-events-page.js` takes the repository from `const GH_REPO` in `index.html`; until 2026-10-23 the page hardcoded `holzerjm/mass-ai-atlas` in three links. The test checks the wiring, not the value |
 | `a11y.spec.js` | axe on each view | see below |
+| | every allowlist entry is scoped | a `KNOWN_SERIOUS` entry with no `within`, which would tolerate its rule on every element of that page, including ones added later |
 
 ### Rules every test gets for free
 
@@ -153,8 +154,8 @@ If a test fails because you changed that behaviour on purpose, change the test
 in the same PR and say why in the commit message — the tests are the written
 record of what shared links and counts promise.
 
-Tests read the page's own globals by name (`DATA`, `markers`, `map`,
-`openDrawer`) through `page.evaluate` — top-level `let`/`const` in `index.html`
+Tests read the page's own globals by name (`DATA`, `markers`, `openDrawer`)
+through `page.evaluate` — top-level `let`/`const` in `index.html`
 are reachable that way. The Node side reads `data/*.yml` through the same shared
 loader the page uses (`atlas-data.js`), exactly as
 `validate.js` does.
@@ -184,15 +185,16 @@ the elements it is tolerated in (`within`: CSS selectors — a flagged node must
 be, or sit inside, one of them), the date, and why. There are no rule-wide
 entries (a test fails if one is added): the same rule anywhere else on that page
 still fails, so a new colour-only link can't hide behind a known one. Region
-selectors (`#add p`, `.footer-inner`) rather than axe's own `nth-child`
-selectors keep an unrelated footer edit from breaking the gate. As of
-2026-09-30:
+selectors rather than axe's own `nth-child` selectors keep an unrelated edit
+from breaking the gate. As of 2026-11-01:
 
 | Scan | Rule | Within | Why it's tolerated for now |
 |---|---|---|---|
-| events page | `color-contrast` | `#genLine`, `#add + p` | the grey "refreshed …" line and the sources/credits paragraph with its links (`--faint`) are below 4.5:1 — fix in `scripts/build-events-page.js` |
-| events page | `link-in-text-block` | `#add p`, `.footer-inner`, `#list .atlas` | colour-only links in three places: the "Get your event on this list" paragraph, the footer ("The Open Accelerator", "Suggest an entry", "GitHub"), and each event's "→ on the atlas" link — same file |
 | first-visit tour | `color-contrast` | `#tourStep` | the "1 / 5" counter is below 4.5:1 |
+
+The baseline also had two events-page entries, for its faint meta text
+(`color-contrast`) and its colour-only links (`link-in-text-block`). Both were
+fixed in October 2026 and their entries removed.
 
 To **fix one**: fix the page, run `npx playwright test tests/a11y.spec.js`, and
 the report shows "allowlist entry unused" naming each selector that no longer
