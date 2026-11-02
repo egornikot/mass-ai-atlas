@@ -219,11 +219,12 @@ opens a **draft PR** with a review checklist. It never publishes (merge does tha
 `map-style-dark.json` or `events/` (plus manual `workflow_dispatch` runs): it re-validates
 `data/`, rebuilds the exports, share pages, sitemap and events page, rsyncs them with the page,
 loader, map style and data files to the origin server, and posts a summary (new/updated entry
-names, count, links) to the TOA Slack, or a failure alert. A run that fails before its
+names, count, links) to the TOA Slack, or a failure alert, which also covers a run that is
+cancelled or hits its time limit. A run that fails before its
 `Rsync atlas` step leaves the live site unchanged. One that fails inside it can leave the site
 half updated: the step's `rsync` commands run one after another, and the files they copied
-before the failure are already live. The failure alert says "unchanged" either way; the next
-successful run (a manual `workflow_dispatch` will do) uploads the full set again.
+before the failure are already live. The failure alert says which of the two happened; the
+next successful run (a manual `workflow_dispatch` will do) uploads the full set again.
 
 Plumbing (all in repo secrets, Settings → Secrets → Actions): `DEPLOY_SSH_KEY` is a
 dedicated ed25519 key whose `authorized_keys` line on the server is
