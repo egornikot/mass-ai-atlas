@@ -219,7 +219,7 @@ kbd{font:600 11px/1 "Red Hat Display",sans-serif;border:1px solid var(--line);bo
 <script src="https://unpkg.com/supercluster@8.0.1/dist/supercluster.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.3.2/dist/js-yaml.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/ajv/8.17.1/ajv7.min.js"></script>
-<script src="atlas-data.js"></script>
+<script src="atlas-data.js?v=c62436b9fc"></script>
 <script>
 /* ============================================================
    Mass AI Atlas — 3D Lenses
@@ -827,10 +827,10 @@ function start({ CATS, STAGES, DATA, LINES }, EVENTS){
 
   function renderGuide(){
     $("guide").innerHTML = `<button class="close" aria-label="Hide guide">×</button>${GUIDE[st.lens]}`;
-    $("guide").querySelector(".close").onclick = () => { $("guide").hidden = true; $("helpBtn").hidden = false; store.set("atlas3d-guide", "off"); };
+    $("guide").querySelector(".close").onclick = () => { $("guide").hidden = true; $("helpBtn").hidden = false; store.set("toa-atlas-3d-guide", "off"); };
   }
-  $("helpBtn").onclick = () => { $("guide").hidden = false; $("helpBtn").hidden = true; store.set("atlas3d-guide", "on"); };
-  if(store.get("atlas3d-guide") === "off") $("helpBtn").hidden = false; else $("guide").hidden = false;
+  $("helpBtn").onclick = () => { $("guide").hidden = false; $("helpBtn").hidden = true; store.set("toa-atlas-3d-guide", "on"); };
+  if(store.get("toa-atlas-3d-guide") === "off") $("helpBtn").hidden = false; else $("guide").hidden = false;
 
   /* ---------- stats ---------- */
   (function renderStats(){
